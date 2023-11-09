@@ -52,7 +52,7 @@ type keyEncrypter interface {
 
 // A generic key decrypter
 type keyDecrypter interface {
-	decryptKey(headers rawHeader, recipient *recipientInfo, generator keyGenerator) ([]byte, error) // Decrypt a key
+	decryptKey(headers Header, recipient *recipientInfo, generator keyGenerator) ([]byte, error) // Decrypt a key
 }
 
 // A generic encrypter based on the given key encrypter and content cipher.
@@ -441,19 +441,8 @@ func (ctx *genericEncrypter) Options() EncrypterOptions {
 // Note that ed25519 is only available for signatures, not encryption, so is
 // not an option here.
 func (obj JSONWebEncryption) Decrypt(decryptionKey interface{}) ([]byte, error) {
-	headers := obj.mergedHeaders(nil)
-
 	if len(obj.recipients) > 1 {
 		return nil, errors.New("go-jose/go-jose: too many recipients in payload; expecting only one")
-	}
-
-	critical, err := headers.getCritical()
-	if err != nil {
-		return nil, fmt.Errorf("go-jose/go-jose: invalid crit header")
-	}
-
-	if len(critical) > 0 {
-		return nil, fmt.Errorf("go-jose/go-jose: unsupported crit header")
 	}
 
 	key := tryJWKS(decryptionKey, obj.Header)
@@ -462,13 +451,8 @@ func (obj JSONWebEncryption) Decrypt(decryptionKey interface{}) ([]byte, error) 
 		return nil, err
 	}
 
-	cipher := getContentCipher(headers.getEncryption())
-	if cipher == nil {
-		return nil, fmt.Errorf("go-jose/go-jose: unsupported enc value '%s'", string(headers.getEncryption()))
-	}
-
 	generator := randomKeyGenerator{
-		size: cipher.keySize(),
+		size: obj.cipher.keySize(),
 	}
 
 	parts := &aeadParts{
@@ -486,7 +470,7 @@ func (obj JSONWebEncryption) Decrypt(decryptionKey interface{}) ([]byte, error) 
 	cek, err := decrypter.decryptKey(recipientHeaders, &recipient, generator)
 	if err == nil {
 		// Found a valid CEK -- let's try to decrypt.
-		plaintext, err = cipher.decrypt(cek, authData, parts)
+		plaintext, err = obj.cipher.decrypt(cek, authData, parts)
 	}
 
 	if plaintext == nil {
@@ -509,31 +493,14 @@ func (obj JSONWebEncryption) Decrypt(decryptionKey interface{}) ([]byte, error) 
 // The decryptionKey argument must have one of the types allowed for the
 // decryptionKey argument of Decrypt().
 func (obj JSONWebEncryption) DecryptMulti(decryptionKey interface{}) (int, Header, []byte, error) {
-	globalHeaders := obj.mergedHeaders(nil)
-
-	critical, err := globalHeaders.getCritical()
-	if err != nil {
-		return -1, Header{}, nil, fmt.Errorf("go-jose/go-jose: invalid crit header")
-	}
-
-	if len(critical) > 0 {
-		return -1, Header{}, nil, fmt.Errorf("go-jose/go-jose: unsupported crit header")
-	}
-
 	key := tryJWKS(decryptionKey, obj.Header)
 	decrypter, err := newDecrypter(key)
 	if err != nil {
 		return -1, Header{}, nil, err
 	}
 
-	encryption := globalHeaders.getEncryption()
-	cipher := getContentCipher(encryption)
-	if cipher == nil {
-		return -1, Header{}, nil, fmt.Errorf("go-jose/go-jose: unsupported enc value '%s'", string(encryption))
-	}
-
 	generator := randomKeyGenerator{
-		size: cipher.keySize(),
+		size: obj.cipher.keySize(),
 	}
 
 	parts := &aeadParts{
@@ -546,18 +513,16 @@ func (obj JSONWebEncryption) DecryptMulti(decryptionKey interface{}) (int, Heade
 
 	index := -1
 	var plaintext []byte
-	var headers rawHeader
+	var headers Header
 
 	for i, recipient := range obj.recipients {
-		recipientHeaders := obj.mergedHeaders(&recipient)
-
-		cek, err := decrypter.decryptKey(recipientHeaders, &recipient, generator)
+		cek, err := decrypter.decryptKey(&recipient, generator)
 		if err == nil {
 			// Found a valid CEK -- let's try to decrypt.
-			plaintext, err = cipher.decrypt(cek, authData, parts)
+			plaintext, err = obj.cipher.decrypt(cek, authData, parts)
 			if err == nil {
 				index = i
-				headers = recipientHeaders
+				headers = recipient.header
 				break
 			}
 		}
@@ -572,10 +537,5 @@ func (obj JSONWebEncryption) DecryptMulti(decryptionKey interface{}) (int, Heade
 		plaintext, _ = decompress(comp, plaintext)
 	}
 
-	sanitized, err := headers.sanitized()
-	if err != nil {
-		return -1, Header{}, nil, fmt.Errorf("go-jose/go-jose: failed to sanitize header: %v", err)
-	}
-
-	return index, sanitized, plaintext, err
+	return index, headers, plaintext, err
 }

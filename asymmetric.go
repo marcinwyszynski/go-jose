@@ -186,7 +186,7 @@ func (ctx rsaEncrypterVerifier) encryptKey(cek []byte, alg KeyAlgorithm) (recipi
 
 	return recipientInfo{
 		encryptedKey: encryptedKey,
-		header:       &rawHeader{},
+		header:       Header{},
 	}, nil
 }
 
@@ -342,7 +342,7 @@ func (ctx ecEncrypterVerifier) encryptKey(cek []byte, alg KeyAlgorithm) (recipie
 	case ECDH_ES:
 		// ECDH-ES mode doesn't wrap a key, the shared secret is used directly as the key.
 		return recipientInfo{
-			header: &rawHeader{},
+			header: Header{},
 		}, nil
 	case ECDH_ES_A128KW, ECDH_ES_A192KW, ECDH_ES_A256KW:
 	default:
@@ -390,6 +390,7 @@ func (ctx ecKeyGenerator) keySize() int {
 }
 
 // Get a content encryption key for ECDH-ES
+// TODO: this should return Header instead of rawHeader
 func (ctx ecKeyGenerator) genKey() ([]byte, rawHeader, error) {
 	priv, err := ecdsa.GenerateKey(ctx.publicKey.Curve, RandReader)
 	if err != nil {
@@ -413,7 +414,7 @@ func (ctx ecKeyGenerator) genKey() ([]byte, rawHeader, error) {
 }
 
 // Decrypt the given payload and return the content encryption key.
-func (ctx ecDecrypterSigner) decryptKey(headers rawHeader, recipient *recipientInfo, generator keyGenerator) ([]byte, error) {
+func (ctx ecDecrypterSigner) decryptKey(headers Header, recipient *recipientInfo, generator keyGenerator) ([]byte, error) {
 	epk, err := headers.getEPK()
 	if err != nil {
 		return nil, errors.New("go-jose/go-jose: invalid epk header")

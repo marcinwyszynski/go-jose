@@ -173,6 +173,10 @@ var supportedCritical = map[string]bool{
 // pass through to consuming code in case it wants to examine them.
 type rawHeader map[HeaderKey]*json.RawMessage
 
+type headerValidator interface {
+	valid(name, value string) error
+}
+
 // Header represents the read-only JOSE header for JWE/JWS objects.
 type Header struct {
 	KeyID      string
@@ -376,8 +380,12 @@ func (parsed rawHeader) getB64() (bool, error) {
 }
 
 // sanitized produces a cleaned-up header object from the raw JSON.
-func (parsed rawHeader) sanitized() (h Header, err error) {
+func (parsed rawHeader) sanitized(validator headerValidator) (h Header, err error) {
 	for k, v := range parsed {
+		err = validator.valid(string(k), string(*v))
+		if err != nil {
+			return
+		}
 		if v == nil {
 			continue
 		}

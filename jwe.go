@@ -48,13 +48,15 @@ type JSONWebEncryption struct {
 	Header                   Header
 	protected, unprotected   *rawHeader
 	recipients               []recipientInfo
+	cipher                   contentCipher
 	aad, iv, ciphertext, tag []byte
 	original                 *rawJSONWebEncryption
 }
 
-// recipientInfo represents a raw JWE Per-Recipient header JSON object after parsing.
+// recipientInfo represents a JWE Per-Recipient header JSON object after parsing, sanitizing,
+// and merging with the protected and unprotected headers.
 type recipientInfo struct {
-	header       *rawHeader
+	header       Header
 	encryptedKey []byte
 }
 
@@ -69,16 +71,14 @@ func (obj JSONWebEncryption) GetAuthData() []byte {
 	return nil
 }
 
-// Get the merged header values
-func (obj JSONWebEncryption) mergedHeaders(recipient *recipientInfo) rawHeader {
+// merge a sequence of rawHeader sets into one.
+//
+// Values in earlier parameters override values in later parameters.
+func mergeHeaders(headers ...*rawHeader) rawHeader {
 	out := rawHeader{}
-	out.merge(obj.protected)
-	out.merge(obj.unprotected)
-
-	if recipient != nil {
-		out.merge(recipient.header)
+	for _, header := range headers {
+		out.merge(header)
 	}
-
 	return out
 }
 
@@ -104,34 +104,67 @@ func (obj JSONWebEncryption) computeAuthData() []byte {
 	return output
 }
 
-// ParseEncrypted parses an encrypted message in compact or JWE JSON Serialization format.
-func ParseEncrypted(input string) (*JSONWebEncryption, error) {
+type JWEParser struct {
+	// invariant: the allowedKeyAlgorithms and allowedContentEncryption slices
+	// always have length >= 1.
+	allowedKeyAlgorithms     []KeyAlgorithm
+	allowedContentEncryption []ContentEncryption
+}
+
+// NewJWEParser creates a new JWE parser with the given validation options.
+func NewJWEParser(keyAlgorithm KeyAlgorithm, contentEncryption ContentEncryption) *JWEParser {
+	return &JWEParser{
+		allowedKeyAlgorithms:     []KeyAlgorithm{keyAlgorithm},
+		allowedContentEncryption: []ContentEncryption{contentEncryption},
+	}
+}
+
+// valid implements the private `headerValidator` interface.
+//
+// It checks that the "alg" and "enc" headers have allowed values.
+func (p *JWEParser) valid(name, value string) error {
+	switch name {
+	case headerAlgorithm:
+		for _, alg := range p.allowedKeyAlgorithms {
+			if KeyAlgorithm(value) == alg {
+				return nil
+			}
+		}
+		return fmt.Errorf("expected \"alg\" to be one of %v, got %q", p.allowedKeyAlgorithms, value)
+	case headerEncryption:
+		for _, alg := range p.allowedContentEncryption {
+			if ContentEncryption(value) == alg {
+				return nil
+			}
+		}
+		return fmt.Errorf("expected \"enc\" to be one of %v, got %q", p.allowedContentEncryption, value)
+	}
+	return nil
+}
+
+// Parse parses an encrypted message in compact or JWE JSON Serialization format.
+func (p *JWEParser) Parse(input string) (*JSONWebEncryption, error) {
 	input = stripWhitespace(input)
 	if strings.HasPrefix(input, "{") {
-		return parseEncryptedFull(input)
+		return p.parseEncryptedFull(input)
 	}
 
-	return parseEncryptedCompact(input)
+	return p.parseEncryptedCompact(input)
 }
 
 // parseEncryptedFull parses a message in compact format.
-func parseEncryptedFull(input string) (*JSONWebEncryption, error) {
+func (p *JWEParser) parseEncryptedFull(input string) (*JSONWebEncryption, error) {
 	var parsed rawJSONWebEncryption
 	err := json.Unmarshal([]byte(input), &parsed)
 	if err != nil {
 		return nil, err
 	}
 
-	return parsed.sanitized()
+	return p.sanitize(&parsed)
 }
 
 // sanitized produces a cleaned-up JWE object from the raw JSON.
-func (parsed *rawJSONWebEncryption) sanitized() (*JSONWebEncryption, error) {
-	obj := &JSONWebEncryption{
-		original:    parsed,
-		unprotected: parsed.Unprotected,
-	}
-
+func (p *JWEParser) sanitize(parsed *rawJSONWebEncryption) (*JSONWebEncryption, error) {
 	// Check that there is not a nonce in the unprotected headers
 	if parsed.Unprotected != nil {
 		if nonce := parsed.Unprotected.getNonce(); nonce != "" {
@@ -144,8 +177,9 @@ func (parsed *rawJSONWebEncryption) sanitized() (*JSONWebEncryption, error) {
 		}
 	}
 
+	var protected rawHeader
 	if parsed.Protected != nil && len(parsed.Protected.bytes()) > 0 {
-		err := json.Unmarshal(parsed.Protected.bytes(), &obj.protected)
+		err := json.Unmarshal(parsed.Protected.bytes(), &protected)
 		if err != nil {
 			return nil, fmt.Errorf("go-jose/go-jose: invalid protected header: %s, %s", err, parsed.Protected.base64())
 		}
@@ -154,54 +188,81 @@ func (parsed *rawJSONWebEncryption) sanitized() (*JSONWebEncryption, error) {
 	// Note: this must be called _after_ we parse the protected header,
 	// otherwise fields from the protected header will not get picked up.
 	var err error
-	mergedHeaders := obj.mergedHeaders(nil)
-	obj.Header, err = mergedHeaders.sanitized()
+	mergedHeaders := mergeHeaders(&protected, parsed.Unprotected)
+
+	if crit := mergedHeaders[headerCritical]; crit != nil && len(*crit) > 0 {
+		return nil, fmt.Errorf("go-jose/go-jose: unsupported crit header")
+	}
+
+	cipher := getContentCipher(mergedHeaders.getEncryption())
+	if cipher == nil {
+		return nil, fmt.Errorf("go-jose/go-jose: unsupported enc value '%s'", string(mergedHeaders.getEncryption()))
+	}
+
+	mergedAndSanitized, err := mergedHeaders.sanitized(p)
 	if err != nil {
 		return nil, fmt.Errorf("go-jose/go-jose: cannot sanitize merged headers: %v (%v)", err, mergedHeaders)
 	}
 
+	var recipients []recipientInfo
 	if len(parsed.Recipients) == 0 {
-		obj.recipients = []recipientInfo{
+		header, err := parsed.Header.sanitized(p)
+		if err != nil {
+			return nil, fmt.Errorf("go-jose/go-jose: cannot sanitize recipient headers: %v (%v)", err, parsed.Header)
+		}
+		recipients = []recipientInfo{
 			{
-				header:       parsed.Header,
+				header:       header,
 				encryptedKey: parsed.EncryptedKey.bytes(),
 			},
 		}
 	} else {
-		obj.recipients = make([]recipientInfo, len(parsed.Recipients))
-		for r := range parsed.Recipients {
-			encryptedKey, err := base64URLDecode(parsed.Recipients[r].EncryptedKey)
+		recipients = make([]recipientInfo, 0, len(parsed.Recipients))
+		for _, rawRecipient := range parsed.Recipients {
+			encryptedKey, err := base64URLDecode(rawRecipient.EncryptedKey)
 			if err != nil {
 				return nil, err
 			}
 
 			// Check that there is not a nonce in the unprotected header
-			if parsed.Recipients[r].Header != nil && parsed.Recipients[r].Header.getNonce() != "" {
+			if rawRecipient.Header != nil && rawRecipient.Header.getNonce() != "" {
 				return nil, ErrUnprotectedNonce
 			}
 
-			obj.recipients[r].header = parsed.Recipients[r].Header
-			obj.recipients[r].encryptedKey = encryptedKey
+			header, err := rawRecipient.Header.sanitized(p)
+			if err != nil {
+				return nil, fmt.Errorf("go-jose/go-jose: cannot sanitize recipient headers: %v (%v)", err, parsed.Header)
+			}
+
+			if header.Algorithm == "" || header.ExtraHeaders[headerEncryption] == nil {
+				return nil, fmt.Errorf("go-jose/go-jose: message is missing alg/enc headers")
+			}
+
+			recipients = append(recipients, recipientInfo{
+				header:       header,
+				encryptedKey: encryptedKey,
+			})
 		}
 	}
 
-	for _, recipient := range obj.recipients {
-		headers := obj.mergedHeaders(&recipient)
-		if headers.getAlgorithm() == "" || headers.getEncryption() == "" {
-			return nil, fmt.Errorf("go-jose/go-jose: message is missing alg/enc headers")
-		}
-	}
+	return &JSONWebEncryption{
+		Header:      mergedAndSanitized,
+		protected:   &protected,
+		unprotected: parsed.Unprotected,
+		recipients:  recipients,
 
-	obj.iv = parsed.Iv.bytes()
-	obj.ciphertext = parsed.Ciphertext.bytes()
-	obj.tag = parsed.Tag.bytes()
-	obj.aad = parsed.Aad.bytes()
+		cipher:     cipher,
+		aad:        parsed.Aad.bytes(),
+		iv:         parsed.Iv.bytes(),
+		ciphertext: parsed.Ciphertext.bytes(),
+		tag:        parsed.Tag.bytes(),
 
-	return obj, nil
+		original: parsed,
+	}, nil
 }
 
 // parseEncryptedCompact parses a message in compact format.
-func parseEncryptedCompact(input string) (*JSONWebEncryption, error) {
+func (p *JWEParser) parseEncryptedCompact(input string) (*JSONWebEncryption, error) {
 	parts := strings.Split(input, ".")
 	if len(parts) != 5 {
 		return nil, fmt.Errorf("go-jose/go-jose: compact JWE format must have five parts")

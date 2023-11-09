@@ -130,7 +130,7 @@ type opaqueKeyDecrypter struct {
 	decrypter OpaqueKeyDecrypter
 }
 
-func (okd *opaqueKeyDecrypter) decryptKey(headers rawHeader, recipient *recipientInfo, generator keyGenerator) ([]byte, error) {
+func (okd *opaqueKeyDecrypter) decryptKey(headers Header, recipient *recipientInfo, generator keyGenerator) ([]byte, error) {
 	mergedHeaders := rawHeader{}
 	mergedHeaders.merge(&headers)
 	mergedHeaders.merge(recipient.header)

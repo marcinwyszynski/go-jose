@@ -363,8 +363,8 @@ func (ctx *symmetricKeyCipher) encryptKey(cek []byte, alg KeyAlgorithm) (recipie
 }
 
 // Decrypt the content encryption key.
-func (ctx *symmetricKeyCipher) decryptKey(headers rawHeader, recipient *recipientInfo, generator keyGenerator) ([]byte, error) {
-	switch headers.getAlgorithm() {
+func (ctx *symmetricKeyCipher) decryptKey(recipient *recipientInfo, generator keyGenerator) ([]byte, error) {
+	switch KeyAlgorithm(recipient.header.Algorithm) {
 	case DIRECT:
 		cek := make([]byte, len(ctx.key))
 		copy(cek, ctx.key)
