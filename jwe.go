@@ -137,10 +137,10 @@ func ParseEncrypted(input string,
 
 	input = stripWhitespace(input)
 	if strings.HasPrefix(input, "{") {
-		return parseEncryptedCompact(input, keyAlgorithms, contentEncryption)
+		return parseEncryptedFull(input, keyAlgorithms, contentEncryption)
 	}
 
-	return parseEncryptedFull(input, keyAlgorithms, contentEncryption)
+	return parseEncryptedCompact(input, keyAlgorithms, contentEncryption)
 }
 
 // parseEncryptedFull parses a message in compact format.
@@ -224,18 +224,24 @@ func (parsed *rawJSONWebEncryption) sanitized(
 	for _, recipient := range obj.recipients {
 		headers := obj.mergedHeaders(&recipient)
 		if !containsKeyAlgorithm(KeyAlgorithm(headers.getAlgorithm()), keyAlgorithms) {
-			return nil, fmt.Errorf("go-jose/go-jose: unexpected key algorithm %q; expected %q", obj.protected.getAlgorithm(), keyAlgorithms)
+			return nil, fmt.Errorf("go-jose/go-jose: unexpected zey algorithm %q; expected %q", obj.protected.getAlgorithm(), keyAlgorithms)
 		}
 		if !containsContentEncryption(ContentEncryption(headers.getEncryption()), contentEncryption) {
 			return nil, fmt.Errorf("go-jose/go-jose: unexpected content encryption algorithm %q; expected %q", obj.protected.getEncryption(), contentEncryption)
 		}
 	}
 
-	if !containsKeyAlgorithm(KeyAlgorithm(obj.protected.getAlgorithm()), keyAlgorithms) {
-		return nil, fmt.Errorf("go-jose/go-jose: unexpected key algorithm %q; expected %q", obj.protected.getAlgorithm(), keyAlgorithms)
+	if obj.protected != nil {
+		alg := obj.protected.getAlgorithm()
+		if alg != "" && !containsKeyAlgorithm(alg, keyAlgorithms) {
+			return nil, fmt.Errorf("go-jose/go-jose: unexpected key algorithm %q; expected %q", obj.protected.getAlgorithm(), keyAlgorithms)
+		}
 	}
-	if !containsContentEncryption(ContentEncryption(obj.unprotected.getEncryption()), contentEncryption) {
-		return nil, fmt.Errorf("go-jose/go-jose: unexpected content encryption algorithm %q; expected %q", obj.protected.getAlgorithm(), contentEncryption)
+	if obj.unprotected != nil {
+		enc := obj.unprotected.getEncryption()
+		if enc != "" && !containsContentEncryption(enc, contentEncryption) {
+			return nil, fmt.Errorf("go-jose/go-jose: unexpected content encryption algorithm %q; expected %q", obj.protected.getAlgorithm(), contentEncryption)
+		}
 	}
 
 	obj.iv = parsed.Iv.bytes()

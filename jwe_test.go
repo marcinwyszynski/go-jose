@@ -116,7 +116,7 @@ func TestFullParseJWE(t *testing.T) {
 	for i := range failures {
 		_, err := ParseEncrypted(successes[i], []KeyAlgorithm{KeyAlgorithm("XYZ")}, []ContentEncryption{ContentEncryption("XYZ")})
 		if err == nil {
-			t.Error("Able to parse invalid message", err, failures[i])
+			t.Error("Able to parse invalid message", failures[i])
 		}
 	}
 }
@@ -645,7 +645,7 @@ func TestSampleAESCBCHMACMessagesFromNodeJose(t *testing.T) {
 	}
 
 	for _, sample := range samples {
-		obj, err := ParseEncrypted(sample.ciphertext)
+		obj, err := ParseEncrypted(sample.ciphertext, []KeyAlgorithm{DIRECT}, []ContentEncryption{A128CBC_HS256, A192CBC_HS384, A256CBC_HS512})
 		if err != nil {
 			t.Error("unable to parse message", sample.ciphertext, err)
 			continue
@@ -676,7 +676,7 @@ func TestTamperedJWE(t *testing.T) {
 	serialized = regexp.MustCompile(`"iv":"[^"]+"`).
 		ReplaceAllString(serialized, `"iv":"UotNnfiavtNOOSZAcfI03i"`)
 
-	object, _ = ParseEncrypted(serialized)
+	object, _ = ParseEncrypted(serialized, []KeyAlgorithm{DIRECT}, []ContentEncryption{A128GCM})
 
 	_, err := object.Decrypt(key)
 	if err == nil {
@@ -687,7 +687,7 @@ func TestTamperedJWE(t *testing.T) {
 func TestJWEWithNullAlg(t *testing.T) {
 	// {"alg":null,"enc":"A128GCM"}
 	serialized := `{"protected":"eyJhbGciOm51bGwsImVuYyI6IkExMjhHQ00ifQ"}`
-	if _, err := ParseEncrypted(serialized); err == nil {
+	if _, err := ParseEncrypted(serialized, []KeyAlgorithm{KeyAlgorithm("null")}, []ContentEncryption{A128GCM}); err == nil {
 		t.Error(err)
 	}
 }
