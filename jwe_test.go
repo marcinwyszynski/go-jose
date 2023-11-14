@@ -529,14 +529,20 @@ func TestSampleNimbusJWEMessagesAESKW(t *testing.T) {
 		for _, msg := range msgs {
 			obj, err := ParseEncrypted(msg,
 				[]KeyAlgorithm{
-					ECDH_ES,
-					ECDH_ES_A128KW,
-					ECDH_ES_A192KW,
-					ECDH_ES_A256KW,
+					A128GCMKW,
+					A128KW,
+					A192GCMKW,
+					A192KW,
+					A256GCMKW,
+					A256GCMKW,
+					A256KW,
 				}, []ContentEncryption{
 					A128CBC_HS256,
+					A128GCM,
 					A192CBC_HS384,
+					A192GCM,
 					A256CBC_HS512,
+					A256GCM,
 				})
 			if err != nil {
 				t.Error("unable to parse message", msg, err)
@@ -630,7 +636,7 @@ func TestPrecomputedECDHMessagesFromJose4j(t *testing.T) {
 			t.Fatal(i, err)
 		}
 
-		parsed, err := ParseEncrypted(vector.message, []KeyAlgorithm{ECDH_ES}, []ContentEncryption{A256CBC_HS512})
+		parsed, err := ParseEncrypted(vector.message, []KeyAlgorithm{ECDH_ES}, []ContentEncryption{A192CBC_HS384, A256CBC_HS512})
 		if err != nil {
 			t.Fatal(i, err)
 		}
