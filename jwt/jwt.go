@@ -102,8 +102,8 @@ func ParseSigned(s string) (*JSONWebToken, error) {
 }
 
 // ParseEncrypted parses token from JWE form.
-func ParseEncrypted(s string) (*JSONWebToken, error) {
-	enc, err := jose.ParseEncrypted(s)
+func ParseEncrypted(s string, keyAlgorithms []jose.KeyAlgorithm, contentEncryption []jose.ContentEncryption) (*JSONWebToken, error) {
+	enc, err := jose.ParseEncrypted(s, keyAlgorithms, contentEncryption)
 	if err != nil {
 		return nil, err
 	}
@@ -115,8 +115,8 @@ func ParseEncrypted(s string) (*JSONWebToken, error) {
 }
 
 // ParseSignedAndEncrypted parses signed-then-encrypted token from JWE form.
-func ParseSignedAndEncrypted(s string) (*NestedJSONWebToken, error) {
-	enc, err := jose.ParseEncrypted(s)
+func ParseSignedAndEncrypted(s string, keyAlgorithms []jose.KeyAlgorithm, contentEncryption []jose.ContentEncryption) (*NestedJSONWebToken, error) {
+	enc, err := jose.ParseEncrypted(s, keyAlgorithms, contentEncryption)
 	if err != nil {
 		return nil, err
 	}

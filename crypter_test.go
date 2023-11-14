@@ -65,7 +65,7 @@ func RoundtripJWE(keyAlg KeyAlgorithm, encAlg ContentEncryption, compressionAlg 
 		return fmt.Errorf("error in serializer: %s", err)
 	}
 
-	parsed, err := ParseEncrypted(msg)
+	parsed, err := ParseEncrypted(msg, []KeyAlgorithm{keyAlg}, []ContentEncryption{encAlg})
 	if err != nil {
 		return fmt.Errorf("error in parse: %s, on msg '%s'", err, msg)
 	}
@@ -221,8 +221,8 @@ func TestEncrypterWithJWKAndKeyID(t *testing.T) {
 	serialized1, _ := ciphertext.CompactSerialize()
 	serialized2 := ciphertext.FullSerialize()
 
-	parsed1, _ := ParseEncrypted(serialized1)
-	parsed2, _ := ParseEncrypted(serialized2)
+	parsed1, _ := ParseEncrypted(serialized1, []KeyAlgorithm{A128KW}, []ContentEncryption{A128GCM})
+	parsed2, _ := ParseEncrypted(serialized2, []KeyAlgorithm{A128KW}, []ContentEncryption{A128GCM})
 
 	if parsed1.Header.KeyID != "test-id" {
 		t.Errorf("expected message to have key id from JWK, but found '%s' instead", parsed1.Header.KeyID)
@@ -308,7 +308,7 @@ func TestMultiRecipientJWE(t *testing.T) {
 
 	msg := obj.FullSerialize()
 
-	parsed, err := ParseEncrypted(msg)
+	parsed, err := ParseEncrypted(msg, []KeyAlgorithm{RSA_OAEP, A256GCMKW}, []ContentEncryption{A128GCM})
 	if err != nil {
 		t.Fatal("error in parse: ", err)
 	}
@@ -398,7 +398,7 @@ func TestEncrypterExtraHeaderInclusion(t *testing.T) {
 		t.Fatal("error in encrypt: ", err)
 	}
 
-	parsed, err := ParseEncrypted(obj.FullSerialize())
+	parsed, err := ParseEncrypted(obj.FullSerialize(), []KeyAlgorithm{A256GCMKW}, []ContentEncryption{A256GCM})
 	if err != nil {
 		t.Fatal("error in parse: ", err)
 	}
@@ -530,12 +530,12 @@ func TestPBES2JWKEncryption(t *testing.T) {
 		t.Fatal("error on CompactSerialize")
 	}
 
-	jwe1, err := ParseEncrypted(serialized)
+	jwe1, err := ParseEncrypted(serialized, []KeyAlgorithm{PBES2_HS256_A128KW}, []ContentEncryption{A128CBC_HS256})
 	if err != nil {
 		t.Fatal("error in ParseEncrypted")
 	}
 
-	jwe2, err := ParseEncrypted(serializationReference)
+	jwe2, err := ParseEncrypted(serializationReference, []KeyAlgorithm{PBES2_HS256_A128KW}, []ContentEncryption{A128CBC_HS256})
 	if err != nil {
 		t.Fatal("error in ParseEncrypted")
 	}
@@ -586,8 +586,8 @@ func TestEncrypterWithPBES2(t *testing.T) {
 			serialized1, _ := ciphertext.CompactSerialize()
 			serialized2 := ciphertext.FullSerialize()
 
-			parsed1, _ := ParseEncrypted(serialized1)
-			parsed2, _ := ParseEncrypted(serialized2)
+			parsed1, _ := ParseEncrypted(serialized1, []KeyAlgorithm{alg}, []ContentEncryption{A128GCM})
+			parsed2, _ := ParseEncrypted(serialized2, []KeyAlgorithm{alg}, []ContentEncryption{A128GCM})
 
 			actual1, err := parsed1.Decrypt("password")
 			if err != nil {
@@ -633,8 +633,8 @@ func TestRejectTooHighP2C(t *testing.T) {
 			serialized1, _ := ciphertext.CompactSerialize()
 			serialized2 := ciphertext.FullSerialize()
 
-			parsed1, _ := ParseEncrypted(serialized1)
-			parsed2, _ := ParseEncrypted(serialized2)
+			parsed1, _ := ParseEncrypted(serialized1, []KeyAlgorithm{alg}, []ContentEncryption{A128GCM})
+			parsed2, _ := ParseEncrypted(serialized2, []KeyAlgorithm{alg}, []ContentEncryption{A128GCM})
 
 			_, err = parsed1.Decrypt("password")
 			if err == nil {
