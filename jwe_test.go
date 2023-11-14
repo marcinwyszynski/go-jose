@@ -114,7 +114,7 @@ func TestFullParseJWE(t *testing.T) {
 	}
 
 	for i := range failures {
-		_, err := ParseEncrypted(successes[i], []KeyAlgorithm{KeyAlgorithm("XYZ")}, []ContentEncryption{ContentEncryption("XYZ")})
+		_, err := ParseEncrypted(failures[i], []KeyAlgorithm{KeyAlgorithm("XYZ")}, []ContentEncryption{ContentEncryption("XYZ")})
 		if err == nil {
 			t.Error("Able to parse invalid message", failures[i])
 		}
