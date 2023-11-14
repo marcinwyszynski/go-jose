@@ -229,10 +229,15 @@ func (parsed *rawJSONWebEncryption) sanitized(
 
 	for _, recipient := range obj.recipients {
 		headers := obj.mergedHeaders(&recipient)
-		if !containsKeyAlgorithm(KeyAlgorithm(headers.getAlgorithm()), keyAlgorithms) {
-			return nil, fmt.Errorf("go-jose/go-jose: unexpected zey algorithm %q; expected %q", obj.protected.getAlgorithm(), keyAlgorithms)
+		alg := headers.getAlgorithm()
+		enc := headers.getEncryption()
+		if alg == "" || enc == "" {
+			return nil, fmt.Errorf("go-jose/go-jose: message is missing alg/enc headers")
 		}
-		if !containsContentEncryption(ContentEncryption(headers.getEncryption()), contentEncryption) {
+		if !containsKeyAlgorithm(alg, keyAlgorithms) {
+			return nil, fmt.Errorf("go-jose/go-jose: unexpected key algorithm %q; expected %q", obj.protected.getAlgorithm(), keyAlgorithms)
+		}
+		if !containsContentEncryption(enc, contentEncryption) {
 			return nil, fmt.Errorf("go-jose/go-jose: unexpected content encryption algorithm %q; expected %q", obj.protected.getEncryption(), contentEncryption)
 		}
 	}
