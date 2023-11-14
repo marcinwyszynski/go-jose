@@ -124,6 +124,12 @@ func containsContentEncryption(needle ContentEncryption, haystack []ContentEncry
 }
 
 // ParseEncrypted parses an encrypted message in compact or JWE JSON Serialization format.
+//
+// The keyAlgorithms and contentEncryption parameters are used to validate the "alg" and "enc"
+// header parameters respectively. They must be nonempty, and each "alg" or "enc" header in
+// parsed data must contain a value that is present in the corresponding parameter. That
+// includes the protected and unprotected headers as well as all recipients. To accept
+// multiple algorithms, pass a slice of all the algorithms you want to accept.
 func ParseEncrypted(input string,
 	keyAlgorithms []KeyAlgorithm,
 	contentEncryption []ContentEncryption,
