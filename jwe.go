@@ -105,7 +105,7 @@ func (obj JSONWebEncryption) computeAuthData() []byte {
 	return output
 }
 
-func containsKeyAlgorithm(needle KeyAlgorithm, haystack []KeyAlgorithm) bool {
+func containsKeyAlgorithm(haystack []KeyAlgorithm, needle KeyAlgorithm) bool {
 	for _, algorithm := range haystack {
 		if algorithm == needle {
 			return true
@@ -114,7 +114,7 @@ func containsKeyAlgorithm(needle KeyAlgorithm, haystack []KeyAlgorithm) bool {
 	return false
 }
 
-func containsContentEncryption(needle ContentEncryption, haystack []ContentEncryption) bool {
+func containsContentEncryption(haystack []ContentEncryption, needle ContentEncryption) bool {
 	for _, algorithm := range haystack {
 		if algorithm == needle {
 			return true
@@ -234,23 +234,23 @@ func (parsed *rawJSONWebEncryption) sanitized(
 		if alg == "" || enc == "" {
 			return nil, fmt.Errorf("go-jose/go-jose: message is missing alg/enc headers")
 		}
-		if !containsKeyAlgorithm(alg, keyAlgorithms) {
+		if !containsKeyAlgorithm(keyAlgorithms, alg) {
 			return nil, fmt.Errorf("go-jose/go-jose: unexpected key algorithm %q; expected %q", obj.protected.getAlgorithm(), keyAlgorithms)
 		}
-		if !containsContentEncryption(enc, contentEncryption) {
+		if !containsContentEncryption(contentEncryption, enc) {
 			return nil, fmt.Errorf("go-jose/go-jose: unexpected content encryption algorithm %q; expected %q", obj.protected.getEncryption(), contentEncryption)
 		}
 	}
 
 	if obj.protected != nil {
 		alg := obj.protected.getAlgorithm()
-		if alg != "" && !containsKeyAlgorithm(alg, keyAlgorithms) {
+		if alg != "" && !containsKeyAlgorithm(keyAlgorithms, alg) {
 			return nil, fmt.Errorf("go-jose/go-jose: unexpected key algorithm %q; expected %q", obj.protected.getAlgorithm(), keyAlgorithms)
 		}
 	}
 	if obj.unprotected != nil {
 		enc := obj.unprotected.getEncryption()
-		if enc != "" && !containsContentEncryption(enc, contentEncryption) {
+		if enc != "" && !containsContentEncryption(contentEncryption, enc) {
 			return nil, fmt.Errorf("go-jose/go-jose: unexpected content encryption algorithm %q; expected %q", obj.protected.getAlgorithm(), contentEncryption)
 		}
 	}
