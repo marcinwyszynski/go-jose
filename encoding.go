@@ -187,7 +187,19 @@ func (b byteBuffer) toInt() int {
 // base64URLDecode is implemented as defined in https://www.rfc-editor.org/rfc/rfc7515.html#appendix-C
 func base64URLDecode(value string) ([]byte, error) {
 	value = strings.TrimRight(value, "=")
-	return base64.RawURLEncoding.DecodeString(value)
+
+	out, err := base64.RawURLEncoding.DecodeString(value)
+	if err == nil {
+		return out, nil
+	}
+
+	// Fall back on standard base64 decoder.
+	out, fallbackErr := base64.RawStdEncoding.DecodeString(value)
+	if fallbackErr != nil {
+		return nil, err
+	}
+
+	return out, nil
 }
 
 func base64EncodeLen(sl []byte) int {
